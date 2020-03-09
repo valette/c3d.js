@@ -1,0 +1,51 @@
+{
+	"actions": {
+
+		"DICOM2NII" : {
+			"parameters" : [
+				{
+					"name" : "inputDirectory",
+					"type" : "directory"
+				}
+			],
+	        "executable" : "./DICOM2NII.js",
+	        "engine" : "node"
+		},
+
+		"c3d" : {
+			"parameters" : [
+				{
+					"name" : "inputVolume",
+					"type" : "file"
+				},
+				{
+					"name" : "inputVolume2",
+					"type" : "file"
+				},
+				{
+					"name" : "command",
+					"type" : "string"
+				},
+				{
+					"name" : "inputDirectory",
+					"type" : "directory"
+				},
+				{
+					"name" : "option",
+					"type" : "string"
+				},
+				{
+					"name" : "sform",
+					"type" : "file",
+					"prefix" : "-set-sform "
+				},
+				{
+					"name" : "outputVolume",
+					"prefix" : "-o ",
+					"type" : "string"
+				}
+			],
+	        "executable" : "/opt/c3d-1.1.0-Linux-x86_64/bin/c3d"
+		}
+	}
+}
