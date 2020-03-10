@@ -113,7 +113,7 @@ async function getDICOMTags( series, directory ) {
 			}
 
 		} catch( e ) {
-			console.log( e );
+		//	console.log( e );
 		}
 
 	}
