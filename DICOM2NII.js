@@ -2,12 +2,13 @@
 /* global require */
 
 const async       = require ( 'async' ),
+      _           = require ( 'lodash' ),
       desk        = require ( 'desk-client' ),
       dicomParser = require ( 'dicom-parser' ),
       filewalker  = require ( 'filewalker' ),
       fs          = require ( 'fs' ),
       path        = require ( 'path' ),
-      stats      = require ( 'node-status' );
+      stats       = require ( 'node-status' );
 
 const dir = process.argv[ 2 ] || process.cwd();
 const concurrency = 1;
@@ -20,121 +21,146 @@ var nSeries = stats.addItem( 'series' );
 var nDirs = stats.addItem( 'directories' );
 
 stats.start( { interval: 1000 } );
-
 const myConsole = stats.console();
-
-var studies = { };
-var patients = { };
-var series = { };
 
 var outputDir;
 const seriesdIds = [];
+const seriesTags = {};
 
-const queue = async.queue( function ( dir, cb ) {
+const queue = async.queue( async function ( directory ) {
 
-    desk.Actions.execute( {
+	try {
 
-        action : 'getRelativePath',
-        path : dir,
-        stdout : true
+		let res = await desk.Actions.executeAsync( {
 
-    }, function ( err, res ) {
+			action : 'getRelativePath',
+			path : directory,
+			stdout : true
 
-        if ( err ) throw err;
-        var dir = res.stdout;
-        console.log(dir);
-        desk.Actions.execute( {
+		} );
 
-            action : 'c3d',
-            inputDirectory : dir,
-            command : '-dicom-series-list',
-            stdout : true,
-            force_update : true
+		const dir = res.stdout;
 
-        }, function ( err, res ) {
+		res = await desk.Actions.executeAsync( {
 
-            nDirs.inc();
-            var series  = res.stdout.split( '\n' );
-            series.shift();
-            series.pop();
-            nSeries.inc( series.length );
-            async.eachLimit( series, 2, function ( serie, callback ) {
+			action : 'c3d',
+			inputDirectory : dir,
+			command : '-dicom-series-list',
+			stdout : true,
+			force_update : true
 
-                console.log( "serie : " );
-                console.log( serie );
-                const values = serie.split( '\t' );
-                const size = parseFloat ( values[ 2 ] );
-                nDICOMS.inc( size );
-                const seriesId = values[ 4 ];
-                seriesdIds.push( seriesId );
+		} );
 
-                desk.Actions.execute( {
+		nDirs.inc();
+		var series  = res.stdout.split( '\n' );
+		series.shift();
+		series.pop();
+		nSeries.inc( series.length );
 
-                    action : 'c3d',
-                    inputDirectory : dir,
-                    command : '-dicom-series-read',
-                    option : seriesId,
-                    outputVolume : seriesId + ".nii.gz",
-                    outputDirectory : outputDir + "/" + seriesId,
+		const prom1 = getDICOMTags( series, directory );
 
-                }, function( err, res ) {
+		const prom2 = async.eachLimit( series, 2, async function ( serie ) {
 
-                    if ( err ) console.log( err );
-                    callback();
+			const values = serie.split( '\t' );
+			const size = parseFloat ( values[ 2 ] );
+			nDICOMS.inc( size );
+			const seriesId = values[ 4 ];
+			seriesdIds.push( seriesId );
 
-                } );
+			await desk.Actions.executeAsync( {
 
-            }, cb );
+				action : 'c3d',
+				inputDirectory : dir,
+				command : '-dicom-series-read',
+				option : seriesId,
+				outputVolume : seriesId + ".nii.gz",
+				outputDirectory : outputDir + "/" + seriesId,
 
-        } );
+			} );
 
-    } );
+		} );
+
+		await Promise.all( [ prom1, prom2 ] );	
+
+	} catch ( e ) {
+		console.log( e );
+	}
 
 }, 3 );
+
+async function getDICOMTags( series, directory ) {
+
+	const files = _.shuffle( await fs.promises.readdir( directory ) );
+	let nFound = 0;
+
+	for ( let file of files ) {
+
+		try {
+			const content = await fs.promises.readFile( path.join( directory, file ) );
+			const dataSet = dicomParser.parseDicom( content );
+			const json = dicomParser.explicitDataSetToJS(dataSet);
+			const id = json[ 'x0020000e'] + "."
+				+ json[ "x00200011" ]
+				+ json[ "x00180050" ]
+				+ json[ "x00280010" ] + json[ "x00280010" ];
+
+			if ( !seriesTags[ id ] ) {
+
+				seriesTags[ id ] = json;
+				nFound++;
+				if ( nFound == series.length ) return;
+
+			}
+
+		} catch( e ) {
+			console.log( e );
+		}
+
+	}
+
+}
 
 desk.Actions.execute( {
 
     action : "getRootDir",
     stdout : true
 
-}, function ( err, res ){
+}, async function ( err, res ){
 
-    var rootDir = res.stdout;
+    const rootDir = res.stdout;
     console.log( 'root dir : ' + rootDir);
 
-    desk.Actions.execute( {
+	res = await desk.Actions.executeAsync( {
 
         action : "getRelativePath",
         stdout : true,
         path : process.cwd()
 
-    }, function ( err, res ) {
+    } )
 
-        if ( err ) throw err;
-        outputDir = res.stdout;
-        console.log( 'output dir : ' + outputDir);
+	outputDir = res.stdout;
+	console.log( 'output dir : ' + outputDir);
+	queue.push( dir + '/' );
 
-		queue.push( dir + '/' );
-        filewalker( dir )
-            .on( 'dir', function ( file, stats ) {
-                if ( file.includes( 'syngo_fV' ) ) return;
-        		queue.push( path.join( dir, file ) + '/' );
-        
-            } )
-        	.on( 'done', function () {
-                console.log("walking done");
-        		queue.drain = function() {
-        
-        			stats.stop();
-        			fs.writeFileSync( 'series.json', JSON.stringify( seriesdIds ) );
-                    stats.stamp();
-                    process.exit(0);
-        
-        		};
-        
-        	} )
-        	.walk();
+	filewalker( dir )
+		.on( 'dir', function ( file, stats ) {
 
-    } );
+			if ( file.includes( 'syngo_fV' ) ) return;
+			queue.push( path.join( dir, file ) + '/' );
+
+		} )
+		.on( 'done', function () {
+
+			queue.drain( function() {
+
+				stats.stop();
+				fs.writeFileSync( 'series.json', JSON.stringify( seriesdIds, null, "  " ) );
+				fs.writeFileSync( 'tags.json', JSON.stringify( seriesTags, null, "  " ) );
+				stats.stamp();
+				process.exit(0);
+
+			} );
+		} )
+		.walk();
 	
 });
