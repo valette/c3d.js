@@ -66,7 +66,6 @@ const queue = async.queue( async function ( directory ) {
 			const size = parseFloat ( values[ 2 ] );
 			nDICOMS.inc( size );
 			const seriesId = values[ 4 ];
-			seriesdIds.push( seriesId );
 
 			const opts = {
 
@@ -81,8 +80,10 @@ const queue = async.queue( async function ( directory ) {
 
 			if ( args.orientation ) opts.swapdim = args.orientation;
 
-			await desk.Actions.executeAsync( opts );
+			try { await desk.Actions.executeAsync( opts );
+				} catch ( e ) { return; }
 
+			seriesdIds.push( seriesId );
 		} );
 
 		await Promise.all( [ prom1, prom2 ] );	
