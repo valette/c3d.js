@@ -5,7 +5,8 @@
 			"parameters" : [
 				{
 					"name" : "inputDirectory",
-					"type" : "directory"
+					"type" : "directory",
+					"prefix" : "-d "
 				}
 			],
 	        "executable" : "./DICOM2NII.js",
@@ -40,12 +41,17 @@
 					"prefix" : "-set-sform "
 				},
 				{
+					"name" : "swapdim",
+					"type" : "string",
+					"prefix" : "-swapdim "
+				},
+				{
 					"name" : "outputVolume",
 					"prefix" : "-o ",
 					"type" : "string"
 				}
 			],
-	        "executable" : "/opt/c3d-1.1.0-Linux-x86_64/bin/c3d"
+	        "executable" : "/opt/c3d-1.1.0-Linux-gcc64/bin/c3d"
 		}
 	}
 }

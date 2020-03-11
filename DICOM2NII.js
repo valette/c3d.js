@@ -1,29 +1,30 @@
 "use strict";
 /* global require */
 
-const async       = require ( 'async' ),
-      _           = require ( 'lodash' ),
-      desk        = require ( 'desk-client' ),
-      dicomParser = require ( 'dicom-parser' ),
-      filewalker  = require ( 'filewalker' ),
-      fs          = require ( 'fs' ),
-      path        = require ( 'path' ),
-      stats       = require ( 'node-status' );
+const args        = require( 'commander' ),
+      async       = require( 'async' ),
+      _           = require( 'lodash' ),
+      desk        = require( 'desk-client' ),
+      dicomParser = require( 'dicom-parser' ),
+      filewalker  = require( 'filewalker' ),
+      fs          = require( 'fs' ),
+      path        = require( 'path' ),
+      stats       = require( 'node-status' );
 
-const dir = process.argv[ 2 ] || process.cwd();
+const cliArgs = process.argv.slice();
+
+args.option( '-o, --orientation <string>', 'change output volumes orientation' )
+	.requiredOption( '-d, --directory <path>', 'input directory' )
+	.parse( cliArgs );
+
 const concurrency = 1;
-
-console.log( dir );
-const useJS = false;
-
-var nDICOMS = stats.addItem( 'DICOM' );
-var nSeries = stats.addItem( 'series' );
-var nDirs = stats.addItem( 'directories' );
-
+const dir = args.directory;
+console.log( "Directory to visit : " + dir );
+const nDICOMS = stats.addItem( 'DICOM' );
+const nSeries = stats.addItem( 'series' );
+const nDirs = stats.addItem( 'directories' );
 stats.start( { interval: 1000 } );
-const myConsole = stats.console();
-
-var outputDir;
+let outputDir;
 const seriesdIds = [];
 const seriesTags = {};
 
@@ -52,7 +53,7 @@ const queue = async.queue( async function ( directory ) {
 		} );
 
 		nDirs.inc();
-		var series  = res.stdout.split( '\n' );
+		const series  = res.stdout.split( '\n' );
 		series.shift();
 		series.pop();
 		nSeries.inc( series.length );
@@ -67,7 +68,7 @@ const queue = async.queue( async function ( directory ) {
 			const seriesId = values[ 4 ];
 			seriesdIds.push( seriesId );
 
-			await desk.Actions.executeAsync( {
+			const opts = {
 
 				action : 'c3d',
 				inputDirectory : dir,
@@ -76,7 +77,11 @@ const queue = async.queue( async function ( directory ) {
 				outputVolume : seriesId + ".nii.gz",
 				outputDirectory : outputDir + "/" + seriesId,
 
-			} );
+			};
+
+			if ( args.orientation ) opts.swapdim = args.orientation;
+
+			await desk.Actions.executeAsync( opts );
 
 		} );
 
@@ -96,13 +101,13 @@ async function getDICOMTags( series, directory ) {
 	for ( let file of files ) {
 
 		try {
+
 			const content = await fs.promises.readFile( path.join( directory, file ) );
 			const dataSet = dicomParser.parseDicom( content );
 			const json = dicomParser.explicitDataSetToJS(dataSet);
-			const id = json[ 'x0020000e'] + "."
-				+ json[ "x00200011" ]
-				+ json[ "x00180050" ]
-				+ json[ "x00280010" ] + json[ "x00280010" ];
+			const id = json[ 'x0020000e'] + "."	+ json[ "x00200011" ]
+				+ json[ "x00180050" ] + json[ "x00280010" ]
+				+ json[ "x00280010" ];
 
 			if ( !seriesTags[ id ] ) {
 
@@ -112,9 +117,7 @@ async function getDICOMTags( series, directory ) {
 
 			}
 
-		} catch( e ) {
-		//	console.log( e );
-		}
+		} catch( e ) {}
 
 	}
 
