@@ -41,6 +41,11 @@
 					"prefix" : "-set-sform "
 				},
 				{
+					"name" : "flip",
+					"type" : "string",
+					"prefix" : "-flip "
+				},
+				{
 					"name" : "swapdim",
 					"type" : "string",
 					"prefix" : "-swapdim "
