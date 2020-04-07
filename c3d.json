@@ -36,6 +36,11 @@
 					"type" : "string"
 				},
 				{
+					"name" : "type",
+					"type" : "string",
+					"prefix" : "-type "
+				},
+				{
 					"name" : "sform",
 					"type" : "file",
 					"prefix" : "-set-sform "
